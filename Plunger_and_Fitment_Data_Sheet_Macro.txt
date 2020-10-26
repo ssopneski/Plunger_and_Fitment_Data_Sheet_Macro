@@ -1,0 +1,190 @@
+Sub Data_Sheet_Review()
+
+    'SECTION 1 - Information Row Review and Variable Set Up
+
+'Open file
+Dim sFilePath, sFileName, sMacroFileName As String
+sFilePath = Application.GetOpenFilename("Excel Files (*.xls),*.xls", , "Please select Excel file...")
+Workbooks.Open Filename:=sFilePath
+sFileName = ActiveWorkbook.Name
+
+'Check all information in Row 3
+Dim sCavity, sToolNo, sIMEDPartNo, sBFPartNo, sDwgRev, sLot, sRev, sYear, sMaterialLot, sPressID As String
+
+'Trim cavity ID
+Range("A3").Value = Trim(Range("A3").Value)
+sCavity = Range("A3").Value
+
+'Check tool #, change if wrong
+Range("B3").Value = Trim(Range("B3").Value)
+If InStr(1, Range("B3"), "6047.") = 0 Then
+    sToolNo = InputBox("Tool # is incorrect, the cell value is: " & Range("B3").Value & ". Input corrected tool # below:")
+    Range("B3").Value = sToolNo
+End If
+
+'Trim BF Part No then check if wrong
+Range("C3").Value = Trim(Range("C3").Value)
+If InStr(1, Range("C3"), "RFIT") = 0 Then
+    sBFPartNo = InputBox("BioFire Part # is incorrect, the cell value is: " & Range("C3").Value & ". Input corrected BioFire Part # below:")
+    Range("C3").Value = sBFPartNo
+End If
+sBFPartNo = Range("C3").Value
+
+'Trim Drawing Rev then verify
+Range("D3").Value = Trim(Range("D3").Value)
+sDwgRev = Range("D3").Value
+Dim rPartNoCol, rFoundPartNo, rFoundDwgRev, rCavityCol, rFoundCavity As Range
+Workbooks("Plunger and Fitment Data Sheet Email Macro").Worksheets("Drawing Revisions").Activate
+Set rPartNoCol = Workbooks("Plunger and Fitment Data Sheet Email Macro").Worksheets("Drawing Revisions").Range(("A1"), Range("A1").End(xlDown))
+Set rCavityCol = Workbooks("Plunger and Fitment Data Sheet Email Macro").Worksheets("Drawing Revisions").Range(("B1"), Range("B1").End(xlDown))
+'Find cavity from data sheet in Drawing Revisions tab, match part #, error if not able to find
+Set rFoundCavity = rCavityCol.Find(sCavity)
+If rFoundCavity.Offset(0, -1) = sBFPartNo Then
+    Set rFoundDwgRev = rFoundCavity.Offset(0, 1)
+    Else
+    Set rFoundDwgRev = rCavityCol.Find(sCavity, rFoundCavity).Offset(0, 1)
+    If rFoundDwgRev Is Nothing Then
+        MsgBox "The macro could not find either the BioFire Part Number or Cavity. Please check both the data sheet and the Drawing Revisions tab of the macro and re-rerun the macro."
+        Exit Sub
+    End If
+End If
+
+If rFoundDwgRev <> sDwgRev Then
+    sDwgRev = InputBox("Drawing Revision # is incorrect, the cell value is: " & sDwgRev & " and the value from the Drawing Revisions tab of the macro is: " & rFoundDwgRev & ". Input corrected revision # below:")
+    Workbooks.Open Filename:=sFilePath
+    Range("D3").Value = sDwgRev
+End If
+
+Workbooks.Open Filename:=sFilePath
+
+'Trim Lot # verify its a number
+Range("F3").Value = Trim(Range("F3").Value)
+sLot = Range("F3").Value
+If IsNumeric(Range("F3").Value) = False Then
+    sLot = InputBox("Lot # is incorrect, the cell value is: " & Range("F3").Value & ". Input corrected Lot # below:")
+    Range("F3").Value = sLot
+End If
+
+'Calculate the year of the lot
+sYear = "20" & Left(sLot, 2)
+
+'Trim IMED Item # and check if it's a valid part #
+Range("E3").Value = Trim(Range("E3").Value)
+If InStr(1, Range("E3"), "3047.") = 0 Then
+    sIMEDPartNo = InputBox("IMED Part # is incorrect, the cell value is: " & Range("E3").Value & ". Input corrected IMED Part # below:")
+    Range("E3").Value = sIMEDPartNo
+End If
+sIMEDPartNo = Range("E3").Value
+
+'Verify Material Lot # is filled in
+Range("G3").Value = Trim(Range("G3").Value)
+If IsEmpty(Range("G3")) = True Then
+    sMaterialLot = InputBox("Material Lot # is blank. Input Material Lot # below:")
+    Range("G3").Value = sMaterialLot
+End If
+
+'Verify Press ID is filled in
+Range("H3").Value = Trim(Range("H3").Value)
+If IsEmpty(Range("H3")) = True Then
+    sPressID = InputBox("Press ID # is blank. Input Press ID # below:")
+    Range("H3").Value = sPressID
+End If
+
+'Set up the correct file name
+sMacroFileName = Range("C3") & Range("A3") & " MEAS " & Range("A3") & "-" & Range("F3") & "_SDIM"
+Dim sAnswer As String
+
+    'SECTION 2 - Copy Unedited Data Sheet, Format Data Sheet, and Delete Empty Rows
+    
+Dim oFSO As Object
+Set oFSO = CreateObject("Scripting.FileSystemObject") 'Set up oFSO to move and copy data sheet
+ActiveWorkbook.Close SaveChanges:=True 'Close file
+
+'Determine if fitment or plunger data sheet, then copy to Unedited Data Sheets folder
+If InStr(1, sBFPartNo, "PLG") = 0 Then 'If it's a fitment data sheet
+    'Copy file to Unedited Data Sheets
+    Call oFSO.CopyFile(sFilePath, "\\ipfs\DFSRoot\QA Data\RFIT-FIT_MEAS WO COMPLETE\Fitment Unedited Data Sheets\" & sYear & "\MOLD " & sCavity & "\" & sFileName, True)
+Else 'If it's a plunger data sheet
+    'Copy file to Unedited Data Sheets
+    Call oFSO.CopyFile(sFilePath, "\\ipfs\DFSRoot\QA Data\RFIT-PLG_MEAS WO COMPLETE\Plunger Unedited Data Sheets\" & sYear & "\MOLD " & sCavity & "\" & sFileName, True)
+End If
+
+Workbooks.Open Filename:=sFilePath 'Open file back up to edit
+ActiveSheet.Unprotect "Quality2" 'Unprotect sheet
+Dim iLastRowData As Integer
+If InStr(1, sBFPartNo, "PLG") = 0 Then 'If it's a fitment data sheet
+    'Determine where the last sample is, delete all rows underneath
+    iLastRowData = Range("C7", "AJ7").End(xlDown).Row
+    Range("A" & (iLastRowData + 1), Range("AJ1000")).EntireRow.Delete
+    'Remove inspector initials and employee # from Sample column
+    Dim sDateFixed As String
+    For I = 7 To iLastRowData
+        Range("A" & I).Value = I - 6
+        'Check if all cells in Date/Time column are in date format
+        If IsDate(Range("B" & I)) = False Then
+            sDateFixed = InputBox("Date/Time is incorrect, the cell value is " & Range("B" & I).Value & ". Input corrected Date/Time below:")
+        End If
+        Rows(I).HorizontalAlignment = xlCenter
+    Next I
+    
+Else 'If it's a plunger data sheet
+    'Determine where the last sample is, delete all rows underneath
+    iLastRowData = Range("C7", "AN7").End(xlDown).Row
+    Range("A" & (iLastRowData + 1), Range("AN1000")).EntireRow.Delete
+    'Remove inspector initials and employee # from Sample column
+    For I = 7 To iLastRowData
+        Range("A" & I).Value = I - 6
+        'Check if all cells in Date/Time column are in date format
+        If IsDate(Range("B" & I)) = False Then
+            sDateFixed = InputBox("Date/Time is incorrect, the cell value is " & Range("B" & I).Value & ". Input corrected Date/Time below:")
+            Range("B" & I).Value = sDateFixed
+        End If
+        Rows(I).HorizontalAlignment = xlCenter
+    Next I
+    
+End If
+
+    'SECTION 3 - Copy Unedited File, Check File Name, Move to Completed Folder
+
+ActiveWorkbook.Close SaveChanges:=True 'Close file
+'Determine if PLG/FIT, copy file to Unedited Data Sheets folder
+'Change file name if incorrect then move to completed folder
+
+If InStr(1, sBFPartNo, "PLG") = 0 Then 'If it's a fitment data sheet
+    'Copy file to Unedited Data Sheets
+    Call oFSO.CopyFile(sFilePath, "\\ipfs\DFSRoot\QA Data\RFIT-FIT_MEAS WO COMPLETE\Fitment Unedited Data Sheets\" & sYear & "\MOLD " & sCavity & "\" & sFileName, True)
+    If InStr(1, sFilePath, sMacroFileName) = 0 Then 'If the file name is wrong
+        sAnswer = MsgBox("File name is incorrect. Do you want to change the file name to " & vbCrLf & sMacroFileName & "?", vbQuestion + vbYesNo)
+        If sAnswer = vbYes Then
+            'Change File name if the user clicks Yes then move file
+            Call oFSO.MoveFile(sFilePath, "\\ipfs\DFSRoot\QA Data\RFIT-FIT_MEAS WO COMPLETE\" & sYear & "\MOLD " & sCavity & "\" & sMacroFileName & ".xls")
+            sFilePath = "\\ipfs\DFSRoot\QA Data\RFIT-FIT_MEAS WO COMPLETE\" & sYear & "\MOLD " & sCavity & "\" & sMacroFileName & ".xls"""
+        Else
+            'Error if the user clicks No
+            MsgBox "There was an issue with the file name, please contact Quality Manager or Quality Engineer."
+            Exit Sub
+        End If
+    Else 'If file name was right, move without editing file name
+        Call oFSO.MoveFile(sFilePath, "\\ipfs\DFSRoot\QA Data\RFIT-FIT_MEAS WO COMPLETE\" & sYear & "\MOLD " & sCavity & "\" & sFileName)
+        sFilePath = "\\ipfs\DFSRoot\QA Data\RFIT-FIT_MEAS WO COMPLETE\" & sYear & "\MOLD " & sCavity & "\" & sFileName
+    End If
+Else 'If it's a plunger data sheet
+    'Copy file to Unedited Data Sheets
+    Call oFSO.CopyFile(sFilePath, "\\ipfs\DFSRoot\QA Data\RFIT-PLG_MEAS WO COMPLETE\Plunger Unedited Data Sheets\" & sYear & "\MOLD " & sCavity & "\" & sFileName, True)
+    If InStr(1, sFilePath, sMacroFileName) = 0 Then 'If the file name is wrong
+        sAnswer = MsgBox("File name is incorrect. Do you want to change the file name to " & vbCrLf & sMacroFileName & "?", vbQuestion + vbYesNo)
+        If sAnswer = vbYes Then
+            'Change File name if the user clicks Yes then move file
+            Call oFSO.MoveFile(sFilePath, "\\ipfs\DFSRoot\QA Data\RFIT-PLG_MEAS WO COMPLETE\" & sYear & "\MOLD " & sCavity & "\" & sMacroFileName & ".xls")
+            sFilePath = "\\ipfs\DFSRoot\QA Data\RFIT-PLG_MEAS WO COMPLETE\" & sYear & "\MOLD " & sCavity & "\" & sMacroFileName & ".xls"
+        Else
+            'Error if the user clicks No
+            MsgBox "There was an issue with the file name, please contact Quality Manager or Quality Engineer."
+        End If
+    Else 'If file name was right, move without editing file name
+        Call oFSO.MoveFile(sFilePath, "\\ipfs\DFSRoot\QA Data\RFIT-PLG_MEAS WO COMPLETE\" & sYear & "\MOLD " & sCavity & "\" & sFileName)
+        sFilePath = "\\ipfs\DFSRoot\QA Data\RFIT-PLG_MEAS WO COMPLETE\" & sYear & "\MOLD " & sCavity & "\" & sFileName
+    End If
+End If
+
+End Sub
